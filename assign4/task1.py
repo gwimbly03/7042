@@ -5,6 +5,7 @@ import zlib
 from time import time
 
 def is_probable_prime(n, k=20):
+    """Return True if n is probably prime using Miller-Rabin test."""
     if n < 2:
         return False
     small_primes = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31]
@@ -30,19 +31,25 @@ def is_probable_prime(n, k=20):
             return False
     return True
 
+
 def extended_gcd(a, b):
+    """Return (gcd, x, y) such that ax + by = gcd."""
     if b == 0:
         return a, 1, 0
     g, x1, y1 = extended_gcd(b, a % b)
     return g, y1, x1 - (a // b) * y1
 
+
 def invmod(a, m):
+    """Return modular inverse of a modulo m."""
     g, x, _ = extended_gcd(a, m)
     if g != 1:
         raise ValueError("Modular inverse does not exist")
     return x % m
 
+
 def bbs_init(p, q, seed=None):
+    """Initialize BBS generator and return (n, x)."""
     assert p % 4 == 3 and q % 4 == 3, "p and q must be 3 mod 4"
     n = p * q
     if seed is None:
@@ -53,18 +60,24 @@ def bbs_init(p, q, seed=None):
     x = pow(seed, 2, n)
     return n, x
 
+
 def bbs_next_bit(x, n):
+    """Return next bit and updated state from BBS."""
     x = pow(x, 2, n)
     return x & 1, x
 
+
 def bbs_bits(n, x, k):
+    """Generate k bits from BBS and return updated state."""
     bits = []
     for _ in range(k):
         bit, x = bbs_next_bit(x, n)
         bits.append(bit)
     return bits, x
 
+
 def candidate_from_bbs(n, x, bits):
+    """Generate integer candidate from BBS bits."""
     raw_bits, x = bbs_bits(n, x, bits)
     raw_bits[0] = 1
     raw_bits[-1] = 1
@@ -73,7 +86,9 @@ def candidate_from_bbs(n, x, bits):
         val = (val << 1) | bit
     return val, x
 
+
 def generate_prime_with_bbs(n, x, bits, mr_rounds=20):
+    """Generate a probable prime using BBS and Miller-Rabin."""
     attempts = 0
     while True:
         attempts += 1
@@ -82,7 +97,9 @@ def generate_prime_with_bbs(n, x, bits, mr_rounds=20):
             if is_probable_prime(cand, k=mr_rounds):
                 return cand, attempts, x
 
+
 def generate_rsa_key(bits=512, mr_rounds=20):
+    """Generate RSA keypair using BBS-generated primes."""
     def gen_3mod4(bits):
         while True:
             r = random.getrandbits(bits) | 1 | (1 << (bits - 1))
@@ -111,14 +128,18 @@ def generate_rsa_key(bits=512, mr_rounds=20):
         "bbs_x": x
     }
 
+
 def frequency_monobit_test(bits):
+    """Perform the NIST frequency (monobit) test and return p-value."""
     n = len(bits)
     s = sum(1 if b == 1 else -1 for b in bits)
     s_obs = abs(s) / math.sqrt(n)
     p_value = math.erfc(s_obs / math.sqrt(2))
     return p_value, s
 
+
 def runs_test(bits):
+    """Perform the NIST runs test and return p-value and run count."""
     n = len(bits)
     pi = sum(bits) / n
     tau = 2 / math.sqrt(n)
@@ -134,7 +155,9 @@ def runs_test(bits):
     p_value = math.erfc(z / math.sqrt(2))
     return p_value, runs
 
+
 def maurer_universal_approx(bits, L=6):
+    """Perform the Maurer Universal test and return test statistic."""
     n = len(bits)
     Q = 10 * (1 << L)
     K = (n // L) - Q
@@ -162,12 +185,14 @@ def maurer_universal_approx(bits, L=6):
         sum_log += math.log2(distance)
     return sum_log / K, {"L": L, "Q": Q, "K": K}
 
+
 def main():
-    PRIME_BITS = 1024
+    """Generate RSA keys, run NIST randomness tests, and print results."""
+    PRIME_BITS = 2048 
     TEST_BITS = 200000
     MR_ROUNDS = 16
 
-    print(f"Generating RSA keypair ({PRIME_BITS} bits per prime)...")
+    print(f"Generating RSA keypair ({PRIME_BITS} bits per prime)")
     start = time()
     res = generate_rsa_key(PRIME_BITS, MR_ROUNDS)
     print(f"Done in {time() - start:.2f}s. Attempts for primes: {res['attempts']}\n")
@@ -205,8 +230,9 @@ def main():
     print(f"Raw bytes: {len(b)}, Compressed: {len(compressed)}, Ratio: {ratio:.4f}")
 
     print("\nPublic key:")
-    print("n (hex, first 200 chars):", hex(res["n"])[2:202], "...")
+    print("n (hex, first 200 chars):", hex(res["n"])[2:202])
     print("e:", res["e"])
+
 
 if __name__ == "__main__":
     main()

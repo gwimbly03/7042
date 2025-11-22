@@ -8,21 +8,25 @@ import io
 
 
 def generate_rsa_keypair():
+    """Generate a 2048-bit RSA keypair."""
     key = RSA.generate(2048, e=65537)
     return key, key.publickey()
 
 
 def rsa_encrypt_aes_key(bob_public_key, aes_key):
+    """Encrypt an AES key using Bob's RSA public key with OAEP."""
     cipher = PKCS1_OAEP.new(bob_public_key)
     return cipher.encrypt(aes_key)
 
 
 def rsa_decrypt_aes_key(bob_private_key, encrypted_key):
+    """Decrypt an AES key using Bob's RSA private key with OAEP."""
     cipher = PKCS1_OAEP.new(bob_private_key)
     return cipher.decrypt(encrypted_key)
 
 
 def encrypt_image_file(image_path, aes_key):
+    """Encrypt an image file using AES-256 CBC and return encrypted path, IV, and size."""
     with open(image_path, "rb") as f:
         plaintext = f.read()
 
@@ -38,6 +42,7 @@ def encrypt_image_file(image_path, aes_key):
 
 
 def decrypt_image_file(encrypted_path, aes_key):
+    """Decrypt an encrypted image file using AES-256 CBC and return decrypted path and bytes."""
     with open(encrypted_path, "rb") as f:
         data = f.read()
 
@@ -54,6 +59,7 @@ def decrypt_image_file(encrypted_path, aes_key):
 
 
 def main():
+    """Run the image encryption/decryption demo with RSA key exchange and AES-256 CBC."""
     image_path = "./banana_fish.png"
     print("TASK 4: Image Encryption Using AES-256 CBC (BBS Key)\n")
 
@@ -64,7 +70,7 @@ def main():
     bob_private_key, bob_public_key = generate_rsa_keypair()
     print(f"Bob generated 2048-bit RSA key (modulus = {bob_private_key.n.bit_length()} bits)\n")
 
-    print("Alice generating 256-bit AES key using Blum-Blum-Shub PRNG...")
+    print("Alice generating 256-bit AES key using BBS PRNG...")
     aes_key = Task2.generate_aes_key_bbs()
     print(f"AES Key: {aes_key.hex()}\n")
 

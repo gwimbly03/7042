@@ -383,6 +383,46 @@ class Task2:
         n, d, p, q = privkey
         return pow(c, d, n)
 
+    @staticmethod
+    def rsa_decrypt_crt(c, privkey):
+        """Decrypt integer ciphertext using CRT optimization."""
+        n, d, p, q = privkey
+        dp = d % (p - 1)
+        dq = d % (q - 1)
+        qinv = Task2.modinv(q, p)
+        m1 = pow(c % p, dp, p)
+        m2 = pow(c % q, dq, q)
+        h = (qinv * (m1 - m2)) % p
+        m = (m2 + h * q) % n
+        return m
+
+    @classmethod
+    def rsa_decrypt_comparison(cls):
+        """Compare speed of standard RSA vs CRT RSA decryption."""
+        import time
+        print("\nRSA CRT Speed Comparison\n")
+        pubkey, privkey = cls.generate_rsa_keypair(1024)
+        n, e = pubkey
+        message = random.randint(2, n - 1)
+        c = cls.rsa_encrypt(message, pubkey)
+        t1 = time.time()
+        m1 = cls.rsa_decrypt_standard(c, privkey)
+        t2 = time.time()
+        t3 = time.time()
+        m2 = cls.rsa_decrypt_crt(c, privkey)
+        t4 = time.time()
+        print(f"Standard RSA decrypt: {t2 - t1:.6f} seconds")
+        print(f"CRT RSA decrypt:      {t4 - t3:.6f} seconds")
+        speedup = (t2 - t1) / (t4 - t3) if (t4 - t3) > 0 else float('inf')
+        print(f"\nSpeedup: {speedup:.2f}x faster using CRT\n")
+        if m1 == m2 == message:
+            print("Correctness: PASS")
+        else:
+            print("Correctness: FAIL")
+            print("message:", message)
+            print("standard:", m1)
+            print("crt     :", m2)
+
     def run(self):
         """Run AES and RSA demonstration."""
         print("TASK 2: AES-256 CBC with BBS Key Gen\n")
@@ -397,6 +437,8 @@ class Task2:
         decrypted = self.aes_cbc_decrypt(ciphertext, key, iv)
         print(f"Decrypted: {decrypted.decode()}")
         print("\nEncrypt/decrypt success!" if decrypted == plaintext else "\nFAILED")
+        print("\n\nRSA with and without CRT")
+        self.rsa_decrypt_comparison()
 
 if __name__ == "__main__":
     Task2().run()
