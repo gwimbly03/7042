@@ -1,57 +1,107 @@
+import os
+import time
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.Random import get_random_bytes
-import os
+from task1 import generate_rsa_key  
 
-print("Generating 2048-bit RSA key pair for Bob (Receiver)...")
-bob_key = RSA.generate(2048, e=65537)   
+def extended_gcd(a, b):
+    if b == 0:
+        return a, 1, 0
+    g, x1, y1 = extended_gcd(b, a % b)
+    return g, y1, x1 - (a // b) * y1
 
-bob_public_key = bob_key.publickey()
-bob_private_key = bob_key
+def invmod(a, m):
+    g, x, _ = extended_gcd(a, m)
+    if g != 1:
+        raise ValueError("No modular inverse")
+    return x % m
 
-print(f"n (modulus) has {bob_key.n.bit_length()} bits")
-print(f"Public exponent e = {bob_key.e}\n")
+def rsa_crt_decrypt_integer(c, d, p, q, n):
+    dP = d % (p - 1)
+    dQ = d % (q - 1)
+    qInv = pow(q, -1, p)   
 
-print("Alice generates a 256-bit AES key and encrypts it for Bob...")
+    m1 = pow(c, dP, p)
+    m2 = pow(c, dQ, q)
 
-aes_key = get_random_bytes(32)  
-print(f"Original AES Key (hex): {aes_key.hex()}")
+    h = (qInv * (m1 - m2)) % p
+    m = m2 + h * q
+    return m
 
-encryptor = PKCS1_OAEP.new(bob_public_key)
-encrypted_aes_key = encryptor.encrypt(aes_key)
+def rsa_standard_decrypt_integer(cipher_int, d, n):
+    return pow(cipher_int, d, n)
 
-print(f"Encrypted AES Key (hex): {encrypted_aes_key.hex()[:120]}... ({len(encrypted_aes_key)} bytes total)\n")
+def main():
+    PRIME_BITS = 2048  
+    print(f"Generating RSA keypair ({PRIME_BITS} bits per prime) using Task1")
+    t0 = time.time()
+    res = generate_rsa_key(PRIME_BITS, mr_rounds=16)
+    t1 = time.time()
+    print(f"Done in {t1 - t0:.2f}s. Attempts: {res['attempts']}\n")
 
-print("Bob's private key uses CRT optimization with these parameters:")
-print(f"  p = {bob_private_key.p}")
-print(f"  q = {bob_private_key.q}")
-print(f"  dP = d mod (p-1) = {bob_private_key.invq}")  
-print(f"  dQ = d mod (q-1) = {bob_private_key.invp}")  
-print(f"  qInv = q^{-1} mod p = {bob_private_key.invq}\n")
+    p = res["rsa_p"]
+    q = res["rsa_q"]
+    n = res["n"]
+    e = res["e"]
+    d = res["d"]
 
-decryptor = PKCS1_OAEP.new(bob_private_key)  
-decrypted_aes_key = decryptor.decrypt(encrypted_aes_key)
+    print("RSA key components (sample):")
+    print(f"  n bits: {n.bit_length()}")
+    print(f"  e: {e}")
+    print(f"  d bits: {d.bit_length()}")
+    print(f"  p bits: {p.bit_length()}, q bits: {q.bit_length()}\n")
 
-print(f"Decrypted AES Key (hex): {decrypted_aes_key.hex()}")
+    key = RSA.construct((n, e, d, p, q))
+    pubkey = key.publickey()
 
-if decrypted_aes_key == aes_key:
-    print("\nAES key successfully exchanged using secure RSA")
-    print("Bob can use this shared AES key for symmetric encryption.")
-else:
-    print("\nKey mismatch!")
+    aes_key = get_random_bytes(32)
+    print("Generated AES-256 key (hex):", aes_key.hex())
 
-import time
+    oaep_enc = PKCS1_OAEP.new(pubkey)
+    ciphertext = oaep_enc.encrypt(aes_key)
+    print("\nEncrypted AES key with RSA-OAEP (hex, truncated):", ciphertext.hex()[:160], "...")
+    print(f"Encrypted length: {len(ciphertext)} bytes\n")
 
-ciphertext_int = int.from_bytes(encrypted_aes_key, 'big')
+    oaep_dec = PKCS1_OAEP.new(key)
+    decrypted = oaep_dec.decrypt(ciphertext)
+    print("Decrypted AES key (hex):", decrypted.hex())
+    print("AES key match:", "PASS" if decrypted == aes_key else "FAIL")
 
-start = time.time()
-for _ in range(100):
-    _ = pow(ciphertext_int, bob_private_key.d, bob_private_key.n)  # Standard (slow)
-end = time.time()
-print(f"\nStandard RSA decryption: {(end-start)*1000:.2f} ms")
+    cipher_int = int.from_bytes(ciphertext, byteorder='big')
 
-start = time.time()
-for _ in range(100):
-    _ = PKCS1_OAEP.new(bob_private_key).decrypt(encrypted_aes_key)  # Uses CRT
-end = time.time()
-print(f"CRT optimized RSA decryption: {(end-start)*1000:.2f} ms")
+    _ = rsa_standard_decrypt_integer(cipher_int, d, n)
+    _ = rsa_crt_decrypt_integer(cipher_int, d, p, q, n)
+
+    runs = 50
+    t_std_start = time.time()
+    for _ in range(runs):
+        m_std = rsa_standard_decrypt_integer(cipher_int, d, n)
+    t_std_end = time.time()
+
+    t_crt_start = time.time()
+    for _ in range(runs):
+        m_crt = rsa_crt_decrypt_integer(cipher_int, d, p, q, n)
+    t_crt_end = time.time()
+
+    std_ms = (t_std_end - t_std_start) * 1000
+    crt_ms = (t_crt_end - t_crt_start) * 1000
+    speedup = std_ms / crt_ms if crt_ms > 0 else float('inf')
+
+    print("\n--- RSA modular-exponentiation timings ({} runs) ---".format(runs))
+    print(f"Standard modular-exponent total: {std_ms:.2f} ms")
+    print(f"CRT modular-exponent total:      {crt_ms:.2f} ms")
+    print(f"Speedup (std / crt): {speedup:.2f}x\n")
+
+    equal = (m_std == m_crt)
+    print("Integer modular-exponent results equal:", "PASS" if equal else "FAIL")
+    if not equal:
+        print(" - standard int result (hex, truncated):", hex(m_std)[:120])
+        print(" - crt int result      (hex, truncated):", hex(m_crt)[:120])
+
+    klen = (n.bit_length() + 7) // 8
+    recovered_padded = m_std.to_bytes(klen, byteorder='big')
+    print("\nRecovered padded block length (bytes):", len(recovered_padded))
+
+if __name__ == "__main__":
+    main()
